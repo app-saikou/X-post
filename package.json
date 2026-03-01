@@ -1,0 +1,39 @@
+{
+  "name": "x-calendar-scheduler",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "scheduler": "npx ts-node --project tsconfig.scripts.json scripts/scheduler.ts"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "^6.1.15",
+    "@fullcalendar/daygrid": "^6.1.15",
+    "@fullcalendar/interaction": "^6.1.15",
+    "@fullcalendar/react": "^6.1.15",
+    "@fullcalendar/timegrid": "^6.1.15",
+    "@supabase/ssr": "^0.5.1",
+    "@supabase/supabase-js": "^2.44.4",
+    "next": "14.2.5",
+    "react": "^18",
+    "react-dom": "^18",
+    "twitter-api-v2": "^1.17.2"
+  },
+  "devDependencies": {
+    "@netlify/plugin-nextjs": "^5.15.8",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.24",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.5",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5"
+  }
+}

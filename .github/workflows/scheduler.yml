@@ -1,0 +1,33 @@
+name: 予約投稿スケジューラー
+
+on:
+  # 5分ごとに実行
+  schedule:
+    - cron: '*/5 * * * *'
+  # 手動実行（テスト用）
+  workflow_dispatch:
+
+jobs:
+  run-scheduler:
+    name: 投稿スケジューラー実行
+    runs-on: ubuntu-latest
+    timeout-minutes: 4  # 次の cron 実行前に確実に終了
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存パッケージをインストール
+        run: npm ci
+
+      - name: スケジューラーを実行
+        run: npx ts-node --project tsconfig.scripts.json scripts/scheduler.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

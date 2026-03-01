@@ -1,0 +1,116 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* ========================================
+   FullCalendar ダークテーマ上書き
+   ======================================== */
+.fc-dark .fc-theme-standard td,
+.fc-dark .fc-theme-standard th,
+.fc-dark .fc-theme-standard .fc-scrollgrid {
+  border-color: #27272a;
+}
+
+.fc-dark .fc-col-header-cell {
+  background: #09090b;
+  color: #71717a;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.fc-dark .fc-daygrid-day {
+  background: transparent;
+}
+
+.fc-dark .fc-daygrid-day:hover {
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.fc-dark .fc-daygrid-day-number {
+  color: #a1a1aa;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+}
+
+.fc-dark .fc-day-today {
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+.fc-dark .fc-day-today .fc-daygrid-day-number {
+  background: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+.fc-dark .fc-button {
+  background: #18181b !important;
+  border: 1px solid #3f3f46 !important;
+  color: #e4e4e7 !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+  padding: 4px 12px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  transition: background 0.15s;
+}
+
+.fc-dark .fc-button:hover {
+  background: #27272a !important;
+}
+
+.fc-dark .fc-button-active,
+.fc-dark .fc-button:focus {
+  background: #3b82f6 !important;
+  border-color: #3b82f6 !important;
+  outline: none !important;
+}
+
+.fc-dark .fc-toolbar-title {
+  color: #ffffff;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+}
+
+.fc-dark .fc-event {
+  border-radius: 6px !important;
+  padding: 1px 6px !important;
+  font-size: 0.72rem !important;
+  font-weight: 500 !important;
+  cursor: pointer;
+}
+
+.fc-dark .fc-event:hover {
+  opacity: 0.85;
+}
+
+.fc-dark .fc-more-link {
+  color: #71717a;
+  font-size: 0.7rem;
+}
+
+.fc-dark .fc-timegrid-axis {
+  color: #52525b;
+  font-size: 0.7rem;
+}
+
+.fc-dark .fc-timegrid-slot {
+  border-color: #27272a;
+}
