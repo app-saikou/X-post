@@ -51,13 +51,15 @@ body {
 .fc-dark .fc-day-today .fc-daygrid-day-number {
   background: #3b82f6;
   color: white;
-  border-radius: 50%;
-  width: 24px;
+  border-radius: 999px;
+  min-width: 24px;
   height: 24px;
-  display: flex;
+  padding: 0 6px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
+  white-space: nowrap;
 }
 
 .fc-dark .fc-button {

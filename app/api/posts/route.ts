@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabaseServer";
+import { createAdminClient } from "@/lib/supabaseAdmin";
 import { NextRequest, NextResponse } from "next/server";
 
 // GET /api/posts - 投稿一覧取得
@@ -39,10 +40,13 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  // body.posts: Array<{ content: string; scheduled_at: string; thread_order: number }>
-  // body.thread_id: string | null (スレッドの場合は共通UUID)
   const { posts, thread_id } = body as {
-    posts: { content: string; scheduled_at: string; thread_order: number }[];
+    posts: {
+      content: string;
+      scheduled_at: string;
+      thread_order: number;
+      images?: string[]; // base64 data URLs
+    }[];
     thread_id: string | null;
   };
 
@@ -50,14 +54,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "posts is required" }, { status: 400 });
   }
 
-  const records = posts.map((p) => ({
-    user_id: user.id,
-    content: p.content,
-    scheduled_at: p.scheduled_at,
-    thread_order: p.thread_order,
-    thread_id: thread_id,
-    status: "pending" as const,
-  }));
+  const supabaseAdmin = createAdminClient();
+
+  // 画像を Supabase Storage にアップロードして URL を取得
+  const uploadImages = async (
+    base64List: string[],
+    userId: string,
+    postKey: string
+  ): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const base64 of base64List) {
+      const match = base64.match(/^data:image\/(\w+);base64,/);
+      if (!match) continue;
+      const ext = match[1];
+      const data = base64.slice(match[0].length);
+      const buffer = Buffer.from(data, "base64");
+      const path = `${userId}/${postKey}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("post-images")
+        .upload(path, buffer, { contentType: `image/${ext}` });
+
+      if (uploadError) {
+        console.error("画像アップロードエラー:", uploadError.message);
+        continue;
+      }
+
+      const { data: urlData } = supabaseAdmin.storage
+        .from("post-images")
+        .getPublicUrl(path);
+      urls.push(urlData.publicUrl);
+    }
+    return urls;
+  };
+
+  // 各投稿の画像をアップロードして records を作成
+  const records = await Promise.all(
+    posts.map(async (p, i) => {
+      const postKey = `${thread_id ?? "single"}-${i}-${Date.now()}`;
+      const media_urls = await uploadImages(
+        p.images ?? [],
+        user.id,
+        postKey
+      );
+      return {
+        user_id: user.id,
+        content: p.content,
+        scheduled_at: p.scheduled_at,
+        thread_order: p.thread_order,
+        thread_id: thread_id,
+        status: "pending" as const,
+        media_urls,
+      };
+    })
+  );
 
   const { data, error } = await supabase
     .from("posts")

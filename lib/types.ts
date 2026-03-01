@@ -10,6 +10,7 @@ export interface Post {
   thread_order: number;
   tweet_id: string | null;
   error_message: string | null;
+  media_urls: string[];
   created_at: string;
   updated_at: string;
 }

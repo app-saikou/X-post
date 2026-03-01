@@ -39,6 +39,7 @@ interface PostWithToken {
   status: string;
   thread_id: string | null;
   thread_order: number;
+  media_urls: string[];
   x_access_token: string;
 }
 
@@ -59,6 +60,7 @@ async function run() {
       status,
       thread_id,
       thread_order,
+      media_urls,
       user_tokens!inner(x_access_token)
     `)
     .eq("status", "pending")
@@ -86,6 +88,7 @@ async function run() {
     status: p.status,
     thread_id: p.thread_id,
     thread_order: p.thread_order,
+    media_urls: p.media_urls ?? [],
     x_access_token: p.user_tokens.x_access_token,
   }));
 
@@ -132,11 +135,43 @@ async function run() {
 }
 
 // ========================================
+// 画像を Twitter へアップロードして media_ids を取得
+// ========================================
+async function uploadMediaToTwitter(
+  client: TwitterApi,
+  mediaUrls: string[]
+): Promise<string[]> {
+  const mediaIds: string[] = [];
+  for (const url of mediaUrls) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn(`  ⚠️ 画像 fetch 失敗 (${res.status}): ${url}`);
+        continue;
+      }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const mimeType = res.headers.get("content-type") ?? "image/jpeg";
+      const mediaId = await client.v1.uploadMedia(buffer, { mimeType });
+      mediaIds.push(mediaId);
+    } catch (err) {
+      console.warn(`  ⚠️ Twitter 画像アップロード失敗: ${err}`);
+    }
+  }
+  return mediaIds;
+}
+
+// ========================================
 // 単発投稿
 // ========================================
 async function postSingle(client: TwitterApi, post: PostWithToken) {
   try {
-    const { data } = await client.v2.tweet(post.content);
+    const mediaIds = await uploadMediaToTwitter(client, post.media_urls);
+    const mediaParam =
+      mediaIds.length > 0
+        ? { media: { media_ids: mediaIds as [string, ...string[]] } }
+        : undefined;
+
+    const { data } = await client.v2.tweet(post.content, mediaParam);
     await supabase
       .from("posts")
       .update({ status: "posted", tweet_id: data.id })
@@ -160,11 +195,21 @@ async function postThread(client: TwitterApi, posts: PostWithToken[]) {
 
   for (const post of posts) {
     try {
-      const payload = prevTweetId
+      const mediaIds = await uploadMediaToTwitter(client, post.media_urls);
+      const mediaParam =
+        mediaIds.length > 0
+          ? { media: { media_ids: mediaIds as [string, ...string[]] } }
+          : undefined;
+
+      const replyParam = prevTweetId
         ? { reply: { in_reply_to_tweet_id: prevTweetId } }
         : undefined;
 
-      const { data } = await client.v2.tweet(post.content, payload);
+      const payload = { ...replyParam, ...mediaParam };
+      const { data } = await client.v2.tweet(
+        post.content,
+        Object.keys(payload).length > 0 ? payload : undefined
+      );
       prevTweetId = data.id;
 
       await supabase

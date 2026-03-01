@@ -22,6 +22,7 @@ const CalendarView = dynamicImport(() => import("@/components/CalendarView"), {
 interface TweetDraft {
   content: string;
   order: number;
+  images?: string[]; // base64
 }
 
 function groupPostsToEvents(posts: Post[]): CalendarEvent[] {
@@ -186,6 +187,7 @@ export default function HomePage() {
             content: t.content,
             scheduled_at: scheduledAt,
             thread_order: t.order,
+            images: t.images ?? [],
           })),
           thread_id: threadId,
         }),

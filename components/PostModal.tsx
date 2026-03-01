@@ -7,13 +7,12 @@ import { Post } from "@/lib/types";
 interface TweetDraft {
   content: string;
   order: number;
+  images?: string[]; // base64
 }
 
 interface PostModalProps {
   open: boolean;
-  // 編集時は既存スレッドの全投稿を渡す（新規作成時は null）
   initialPosts: Post[] | null;
-  // 日時の初期値（日付クリック時に設定）
   initialDate: string | null;
   onClose: () => void;
   onSave: (
@@ -34,6 +33,15 @@ function fromLocalDatetimeValue(value: string): string {
   return new Date(value).toISOString();
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function PostModal({
   open,
   initialPosts,
@@ -48,27 +56,27 @@ export default function PostModal({
   const [scheduledAt, setScheduledAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // thread_order → File[] のマップ
+  const [draftImages, setDraftImages] = useState<Map<number, File[]>>(new Map());
   const backdropRef = useRef<HTMLDivElement>(null);
 
   // 初期値セット
   useEffect(() => {
     if (!open) return;
     setShowDeleteConfirm(false);
+    setDraftImages(new Map());
 
     if (initialPosts && initialPosts.length > 0) {
-      // 編集モード
       const sorted = [...initialPosts].sort(
         (a, b) => a.thread_order - b.thread_order
       );
       setTweets(sorted.map((p) => ({ content: p.content, order: p.thread_order })));
       setScheduledAt(toLocalDatetimeValue(sorted[0].scheduled_at));
     } else {
-      // 新規作成モード
       setTweets([{ content: "", order: 0 }]);
       if (initialDate) {
         setScheduledAt(toLocalDatetimeValue(initialDate));
       } else {
-        // デフォルト: 翌日の10:00
         const d = new Date();
         d.setDate(d.getDate() + 1);
         d.setHours(10, 0, 0, 0);
@@ -76,6 +84,18 @@ export default function PostModal({
       }
     }
   }, [open, initialPosts, initialDate]);
+
+  const handleImagesChange = useCallback((order: number, files: File[]) => {
+    setDraftImages((prev) => {
+      const next = new Map(prev);
+      if (files.length === 0) {
+        next.delete(order);
+      } else {
+        next.set(order, files);
+      }
+      return next;
+    });
+  }, []);
 
   const isEditing = !!initialPosts;
   const hasThread = tweets.length > 1;
@@ -87,13 +107,22 @@ export default function PostModal({
     if (!canSave) return;
     setSaving(true);
     try {
+      // File → base64 変換
+      const tweetsWithImages: TweetDraft[] = await Promise.all(
+        tweets.map(async (t) => {
+          const files = draftImages.get(t.order) ?? [];
+          const images = await Promise.all(files.map(fileToBase64));
+          return { ...t, images };
+        })
+      );
+
       const threadId =
         isEditing && initialPosts
           ? initialPosts[0].thread_id
           : hasThread
           ? crypto.randomUUID()
           : null;
-      await onSave(tweets, fromLocalDatetimeValue(scheduledAt), threadId);
+      await onSave(tweetsWithImages, fromLocalDatetimeValue(scheduledAt), threadId);
       onClose();
     } finally {
       setSaving(false);
@@ -134,7 +163,12 @@ export default function PostModal({
         {/* ボディ */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           {/* スレッドエディター */}
-          <ThreadEditor tweets={tweets} onChange={setTweets} />
+          <ThreadEditor
+            tweets={tweets}
+            onChange={setTweets}
+            draftImages={draftImages}
+            onImagesChange={handleImagesChange}
+          />
 
           {/* 日時ピッカー */}
           <div>
