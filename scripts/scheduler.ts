@@ -6,7 +6,13 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
-import { TwitterApi } from "twitter-api-v2";
+import { TwitterApi, SendTweetV2Params } from "twitter-api-v2";
+
+type MediaIds =
+  | [string]
+  | [string, string]
+  | [string, string, string]
+  | [string, string, string, string];
 
 // ========================================
 // 環境変数チェック
@@ -140,7 +146,7 @@ async function run() {
 async function uploadMediaToTwitter(
   client: TwitterApi,
   mediaUrls: string[]
-): Promise<string[]> {
+): Promise<MediaIds | []> {
   const mediaIds: string[] = [];
   for (const url of mediaUrls) {
     try {
@@ -166,9 +172,9 @@ async function uploadMediaToTwitter(
 async function postSingle(client: TwitterApi, post: PostWithToken) {
   try {
     const mediaIds = await uploadMediaToTwitter(client, post.media_urls);
-    const mediaParam =
+    const mediaParam: Partial<SendTweetV2Params> | undefined =
       mediaIds.length > 0
-        ? { media: { media_ids: mediaIds as [string, ...string[]] } }
+        ? { media: { media_ids: mediaIds as MediaIds } }
         : undefined;
 
     const { data } = await client.v2.tweet(post.content, mediaParam);
@@ -196,20 +202,21 @@ async function postThread(client: TwitterApi, posts: PostWithToken[]) {
   for (const post of posts) {
     try {
       const mediaIds = await uploadMediaToTwitter(client, post.media_urls);
-      const mediaParam =
+      const mediaParam: Partial<SendTweetV2Params> | undefined =
         mediaIds.length > 0
-          ? { media: { media_ids: mediaIds as [string, ...string[]] } }
+          ? { media: { media_ids: mediaIds as MediaIds } }
           : undefined;
 
-      const replyParam = prevTweetId
+      const replyParam: Partial<SendTweetV2Params> | undefined = prevTweetId
         ? { reply: { in_reply_to_tweet_id: prevTweetId } }
         : undefined;
 
-      const payload = { ...replyParam, ...mediaParam };
-      const { data } = await client.v2.tweet(
+      const payload: Partial<SendTweetV2Params> = { ...replyParam, ...mediaParam };
+      const tweetResult = await client.v2.tweet(
         post.content,
         Object.keys(payload).length > 0 ? payload : undefined
       );
+      const { data } = tweetResult;
       prevTweetId = data.id;
 
       await supabase
