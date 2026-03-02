@@ -163,7 +163,7 @@ async function uploadMediaToTwitter(
       console.warn(`  ⚠️ Twitter 画像アップロード失敗: ${err}`);
     }
   }
-  return mediaIds;
+  return mediaIds as MediaIds | [];
 }
 
 // ========================================
