@@ -24,6 +24,7 @@
     "twitter-api-v2": "^1.17.2"
   },
   "devDependencies": {
+    "@netlify/functions": "^5.1.2",
     "@netlify/plugin-nextjs": "^5.15.8",
     "@types/node": "^20",
     "@types/react": "^18",
