@@ -66,8 +66,7 @@ async function run() {
       status,
       thread_id,
       thread_order,
-      media_urls,
-      user_tokens!inner(x_access_token)
+      media_urls
     `)
     .eq("status", "pending")
     .lte("scheduled_at", new Date().toISOString())
@@ -83,20 +82,36 @@ async function run() {
     return;
   }
 
+  // 2. 対象ユーザーのトークンを別途取得
+  const userIds = [...new Set(rawPosts.map((p) => p.user_id))];
+  const { data: tokens, error: tokenError } = await supabase
+    .from("user_tokens")
+    .select("id, x_access_token")
+    .in("id", userIds);
+
+  if (tokenError) {
+    console.error("❌ トークン取得エラー:", tokenError.message);
+    process.exit(1);
+  }
+
+  const tokenMap = new Map(tokens?.map((t) => [t.id, t.x_access_token]) ?? []);
+
   console.log(`📝 送信対象: ${rawPosts.length} 件`);
 
-  // user_tokens が JOIN された結果を整形
-  const posts: PostWithToken[] = rawPosts.map((p: any) => ({
-    id: p.id,
-    user_id: p.user_id,
-    content: p.content,
-    scheduled_at: p.scheduled_at,
-    status: p.status,
-    thread_id: p.thread_id,
-    thread_order: p.thread_order,
-    media_urls: p.media_urls ?? [],
-    x_access_token: p.user_tokens.x_access_token,
-  }));
+  // posts と user_tokens をコードで結合
+  const posts: PostWithToken[] = rawPosts
+    .filter((p) => tokenMap.has(p.user_id))
+    .map((p: any) => ({
+      id: p.id,
+      user_id: p.user_id,
+      content: p.content,
+      scheduled_at: p.scheduled_at,
+      status: p.status,
+      thread_id: p.thread_id,
+      thread_order: p.thread_order,
+      media_urls: p.media_urls ?? [],
+      x_access_token: tokenMap.get(p.user_id)!,
+    }));
 
   // 2. user_id ごとにグループ化
   const userGroups = new Map<string, PostWithToken[]>();
@@ -107,7 +122,7 @@ async function run() {
   }
 
   // 3. ユーザーごとに処理
-  for (const [userId, userPosts] of userGroups.entries()) {
+  for (const [, userPosts] of userGroups.entries()) {
     const accessToken = userPosts[0].x_access_token;
     const client = new TwitterApi(accessToken);
 
