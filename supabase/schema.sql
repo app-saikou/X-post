@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS posts (
                   CHECK (status IN ('pending', 'posted', 'failed')),
   thread_id     UUID,             -- スレッドのグループID（thread_order=0 と同一UUIDを使う）
   thread_order  INTEGER NOT NULL DEFAULT 0,
+  media_urls    TEXT[]  NOT NULL DEFAULT '{}',  -- 画像URL配列
   tweet_id      TEXT,             -- 投稿後のX側のツイートID
   error_message TEXT,
   created_at    TIMESTAMPTZ DEFAULT now(),
