@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
             x_avatar_url: xUserMeta?.avatar_url ?? xUserMeta?.picture ?? null,
             x_access_token: providerToken,
             x_refresh_token: providerRefreshToken ?? null,
+            token_expires_at: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: "id" }
