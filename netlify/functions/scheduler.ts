@@ -1,6 +1,6 @@
 /**
  * Netlify Scheduled Function
- * 1分ごとに実行される投稿スケジューラー
+ * 1分ごとに実行される投稿スケジューラー（OAuth 1.0a・自分のアカウント専用）
  */
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -13,7 +13,7 @@ type MediaIds =
   | [string, string, string]
   | [string, string, string, string];
 
-interface PostWithToken {
+interface Post {
   id: string;
   user_id: string;
   content: string;
@@ -22,158 +22,68 @@ interface PostWithToken {
   thread_id: string | null;
   thread_order: number;
   media_urls: string[];
-  x_access_token: string;
-  x_refresh_token: string | null;
-  token_expires_at: string | null;
-}
-
-// ========================================
-// トークンリフレッシュ
-// ========================================
-async function refreshAccessToken(
-  supabase: SupabaseClient,
-  userId: string,
-  currentRefreshToken: string
-): Promise<string | null> {
-  const clientId = process.env.X_CLIENT_ID;
-  const clientSecret = process.env.X_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-
-  try {
-    const authClient = new TwitterApi({ clientId, clientSecret });
-    const { accessToken, refreshToken: newRefreshToken, expiresIn } =
-      await authClient.refreshOAuth2Token(currentRefreshToken);
-
-    const expiresAt = new Date(Date.now() + (expiresIn ?? 7200) * 1000).toISOString();
-    await supabase.from("user_tokens").update({
-      x_access_token: accessToken,
-      x_refresh_token: newRefreshToken ?? currentRefreshToken,
-      token_expires_at: expiresAt,
-      updated_at: new Date().toISOString(),
-    }).eq("id", userId);
-
-    console.log(`  🔄 トークンリフレッシュ成功 (${userId})`);
-    return accessToken;
-  } catch (err) {
-    console.warn(`  ⚠️ トークンリフレッシュ失敗 (${userId}):`, err);
-    return null;
-  }
 }
 
 async function run() {
   const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const X_API_KEY = process.env.X_API_KEY;
+  const X_API_SECRET = process.env.X_API_SECRET;
+  const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
+  const X_ACCESS_TOKEN_SECRET = process.env.X_ACCESS_TOKEN_SECRET;
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("環境変数が不足しています: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY");
+  }
+  if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_TOKEN_SECRET) {
+    throw new Error("環境変数が不足しています: X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET");
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // OAuth 1.0a クライアント（期限切れなし）
+  const client = new TwitterApi({
+    appKey: X_API_KEY,
+    appSecret: X_API_SECRET,
+    accessToken: X_ACCESS_TOKEN,
+    accessSecret: X_ACCESS_TOKEN_SECRET,
+  });
+
   console.log(`\n🕐 スケジューラー開始: ${new Date().toISOString()}`);
 
-  // 1. 送信すべき投稿を取得
-  const { data: rawPosts, error: fetchError } = await supabase
+  // 送信すべき投稿を取得
+  const { data: posts, error: fetchError } = await supabase
     .from("posts")
-    .select(`
-      id,
-      user_id,
-      content,
-      scheduled_at,
-      status,
-      thread_id,
-      thread_order,
-      media_urls
-    `)
+    .select(`id, user_id, content, scheduled_at, status, thread_id, thread_order, media_urls`)
     .eq("status", "pending")
     .lte("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true });
 
   if (fetchError) throw new Error(`Supabase フェッチエラー: ${fetchError.message}`);
 
-  if (!rawPosts || rawPosts.length === 0) {
+  if (!posts || posts.length === 0) {
     console.log("✅ 送信すべき投稿はありません。");
     return;
   }
 
-  // 2. 対象ユーザーのトークンを別途取得
-  const userIds = [...new Set(rawPosts.map((p) => p.user_id))];
-  const { data: tokens, error: tokenError } = await supabase
-    .from("user_tokens")
-    .select("id, x_access_token, x_refresh_token, token_expires_at")
-    .in("id", userIds);
+  console.log(`📝 送信対象: ${posts.length} 件`);
 
-  if (tokenError) throw new Error(`トークン取得エラー: ${tokenError.message}`);
-
-  const tokenMap = new Map(
-    tokens?.map((t) => [t.id, {
-      accessToken: t.x_access_token,
-      refreshToken: t.x_refresh_token as string | null,
-      expiresAt: t.token_expires_at as string | null,
-    }]) ?? []
-  );
-
-  console.log(`📝 送信対象: ${rawPosts.length} 件`);
-
-  const posts: PostWithToken[] = rawPosts
-    .filter((p) => tokenMap.has(p.user_id))
-    .map((p: any) => {
-      const token = tokenMap.get(p.user_id)!;
-      return {
-        id: p.id,
-        user_id: p.user_id,
-        content: p.content,
-        scheduled_at: p.scheduled_at,
-        status: p.status,
-        thread_id: p.thread_id,
-        thread_order: p.thread_order,
-        media_urls: p.media_urls ?? [],
-        x_access_token: token.accessToken,
-        x_refresh_token: token.refreshToken,
-        token_expires_at: token.expiresAt,
-      };
-    });
-
-  // 3. user_id ごとにグループ化
-  const userGroups = new Map<string, PostWithToken[]>();
-  for (const post of posts) {
-    const arr = userGroups.get(post.user_id) ?? [];
+  // thread_id ごとにグループ化（null はそれぞれ単体）
+  const threadGroups = new Map<string | null, Post[]>();
+  for (const post of posts as Post[]) {
+    const arr = threadGroups.get(post.thread_id) ?? [];
     arr.push(post);
-    userGroups.set(post.user_id, arr);
+    threadGroups.set(post.thread_id, arr);
   }
 
-  // 4. ユーザーごとに処理
-  for (const [userId, userPosts] of userGroups.entries()) {
-    let accessToken = userPosts[0].x_access_token;
-    const { x_refresh_token, token_expires_at } = userPosts[0];
-
-    // トークンが期限切れ or 5分以内に期限切れ or 有効期限不明 → リフレッシュ
-    const expiresAt = token_expires_at ? new Date(token_expires_at) : null;
-    const needsRefresh = !expiresAt || expiresAt <= new Date(Date.now() + 5 * 60 * 1000);
-
-    if (needsRefresh && x_refresh_token) {
-      const refreshed = await refreshAccessToken(supabase, userId, x_refresh_token);
-      if (refreshed) accessToken = refreshed;
-    }
-
-    const client = new TwitterApi(accessToken);
-
-    const threadGroups = new Map<string | null, PostWithToken[]>();
-    for (const post of userPosts) {
-      const arr = threadGroups.get(post.thread_id) ?? [];
-      arr.push(post);
-      threadGroups.set(post.thread_id, arr);
-    }
-
-    for (const [threadId, threadPosts] of threadGroups.entries()) {
-      const sorted = [...threadPosts].sort((a, b) => a.thread_order - b.thread_order);
-      if (threadId === null) {
-        for (const post of sorted) await postSingle(supabase, client, post);
-      } else {
-        await postThread(supabase, client, sorted);
-      }
+  for (const [threadId, threadPosts] of threadGroups.entries()) {
+    const sorted = [...threadPosts].sort((a, b) => a.thread_order - b.thread_order);
+    if (threadId === null) {
+      for (const post of sorted) await postSingle(supabase, client, post);
+    } else {
+      await postThread(supabase, client, sorted);
     }
   }
 
@@ -203,7 +113,7 @@ async function uploadMediaToTwitter(
   return mediaIds as MediaIds | [];
 }
 
-async function postSingle(supabase: SupabaseClient, client: TwitterApi, post: PostWithToken) {
+async function postSingle(supabase: SupabaseClient, client: TwitterApi, post: Post) {
   try {
     const mediaIds = await uploadMediaToTwitter(client, post.media_urls);
     const mediaParam: Partial<SendTweetV2Params> | undefined =
@@ -219,7 +129,7 @@ async function postSingle(supabase: SupabaseClient, client: TwitterApi, post: Po
   }
 }
 
-async function postThread(supabase: SupabaseClient, client: TwitterApi, posts: PostWithToken[]) {
+async function postThread(supabase: SupabaseClient, client: TwitterApi, posts: Post[]) {
   let prevTweetId: string | null = null;
 
   for (const post of posts) {
