@@ -124,8 +124,9 @@ async function postSingle(supabase: SupabaseClient, client: TwitterApi, post: Po
     console.log(`  ✓ 投稿成功 [${post.id}]: ${post.content.slice(0, 40)}…`);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
+    const detail = (err as any)?.data ?? (err as any)?.errors ?? null;
     await supabase.from("posts").update({ status: "failed", error_message: message }).eq("id", post.id);
-    console.error(`  ✗ 投稿失敗 [${post.id}]: ${message}`);
+    console.error(`  ✗ 投稿失敗 [${post.id}]: ${message}`, detail ? JSON.stringify(detail) : "");
   }
 }
 
